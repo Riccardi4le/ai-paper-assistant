@@ -14,8 +14,10 @@ Il progetto è low-cost, open-source e completamente automatizzabile.
 
 # Architettura
 ai paper assistant
+
 ├── api/
 │   └── main.py          # Backend FastAPI (API REST + RAG pipeline)
+
 ├── app/
 │   └── streamlit_app.py # Frontend interattivo (Streamlit)
 ├── data/

@@ -7,7 +7,7 @@ from huggingface_hub import InferenceClient
 from dotenv import load_dotenv
 
 # ============================================================
-# ⚙️ CONFIGURAZIONE
+# CONFIGURAZIONE
 # ============================================================
 load_dotenv()
 app = FastAPI()
@@ -21,13 +21,13 @@ HF_TOKEN = os.getenv("HUGGINGFACE_API_TOKEN")
 client = InferenceClient(model="mistralai/Mistral-7B-Instruct-v0.3", token=HF_TOKEN)
 
 # ============================================================
-# 📘 MODELLI DATI
+# MODELLI DATI
 # ============================================================
 class QuestionRequest(BaseModel):
     question: str
 
 # ============================================================
-# 🔍 FUNZIONI DATABASE
+# FUNZIONI DATABASE
 # ============================================================
 def get_papers(q: str = ""):
     conn = sqlite3.connect(DB_PATH)
@@ -63,7 +63,7 @@ def get_context():
     return "\n\n".join([r[0] for r in rows if r[0]])
 
 # ============================================================
-# 💬 FUNZIONE PRINCIPALE AI (versione leggera)
+# FUNZIONE PRINCIPALE AI 
 # ============================================================
 def ask_llm(question: str, context: str):
     """
@@ -92,7 +92,7 @@ def ask_llm(question: str, context: str):
     ]
 
     try:
-        # === 1️⃣ GENERAZIONE PRINCIPALE ===
+        # === GENERAZIONE PRINCIPALE ===
         completion = client.chat.completions.create(
             model="mistralai/Mistral-7B-Instruct-v0.3",
             messages=messages,
@@ -105,7 +105,7 @@ def ask_llm(question: str, context: str):
             raw_answer = raw_answer.replace(tag, "")
         raw_answer = raw_answer.strip()
 
-        # === 2️⃣ SE NECESSARIO, RIFINITURA ===
+        # === SE NECESSARIO, RIFINITURA ===
         if len(raw_answer.split()) < 20 or any(c in raw_answer for c in ["[", "]", "<", ">"]):
             refine_messages = [
                 {
@@ -130,15 +130,15 @@ def ask_llm(question: str, context: str):
         return raw_answer
 
     except Exception as e:
-        print("⚠️ ERRORE HF:", e)
+        print(" ERRORE HF:", e)
         return "Errore durante la generazione della risposta."
 
 # ============================================================
-# 🚀 ENDPOINTS API
+# ENDPOINTS API
 # ============================================================
 @app.get("/")
 def root():
-    return {"message": "API attiva 🚀 - usa /papers/search o /rag/answer"}
+    return {"message": "API attiva  - usa /papers/search o /rag/answer"}
 
 @app.get("/papers/search")
 def search_papers(q: str = ""):

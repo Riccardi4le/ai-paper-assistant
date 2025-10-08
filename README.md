@@ -17,25 +17,17 @@ ai paper assistant
 
 ├── api/
 │   └── main.py          # Backend FastAPI (API REST + RAG pipeline)
-
 ├── app/
 │   └── streamlit_app.py # Frontend interattivo (Streamlit)
-
 ├── data/
 │   ├── app.db           # Database SQLite (metadati paper)
 │   └── pdfs/            # PDF opzionali (solo in locale)
-
 ├── scripts/
 │   └── ingest_arxiv_api.py  # Script di ingest da arXiv
-
 ├── app.py               # Entry point per Hugging Face Spaces
-
 ├── requirements.txt     # Dipendenze Python
-
 ├── .env                 # Token Hugging Face (non pubblicare)
-
 ├── .gitignore
-
 └── README.md
 
 

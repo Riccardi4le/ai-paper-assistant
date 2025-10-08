@@ -1,0 +1,17 @@
+# Backend
+fastapi
+uvicorn
+
+# Frontend
+streamlit
+
+# AI & NLP
+sentence-transformers
+huggingface_hub
+
+# Database & Utility
+python-dotenv
+requests
+sqlite3-binary
+PyPDF2
+faiss-cpu

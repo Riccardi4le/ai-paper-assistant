@@ -1,0 +1,12 @@
+# Dati locali
+data/
+__pycache__/
+*.pyc
+
+# Chiavi e ambienti
+.env
+.venv/
+
+# Cache
+*.log
+*.sqlite3

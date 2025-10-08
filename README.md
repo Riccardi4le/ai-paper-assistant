@@ -26,7 +26,7 @@ ai paper assistant
 │   └── ingest_arxiv_api.py  # Script di ingest da arXiv
 ├── app.py               # Entry point per Hugging Face Spaces
 ├── requirements.txt     # Dipendenze Python
-├── .env                 # Token Hugging Face (non pubblicare)
+├── .env                 # Token Hugging Face 
 ├── .gitignore
 └── README.md
 

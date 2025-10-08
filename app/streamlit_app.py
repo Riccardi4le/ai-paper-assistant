@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 
-# URL della tua API FastAPI (su Hugging Face sarà locale)
+# URL API
 API_URL = "http://127.0.0.1:8000"
 
 # Configurazione pagina

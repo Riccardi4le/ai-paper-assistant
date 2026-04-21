@@ -22,7 +22,7 @@ embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
 # Client Hugging Face (legge HUGGINGFACE_API_TOKEN o HF_TOKEN)
 HF_TOKEN = os.getenv("HUGGINGFACE_API_TOKEN") or os.getenv("HF_TOKEN")
-client = InferenceClient(model="mistralai/Mistral-7B-Instruct-v0.3", token=HF_TOKEN)
+client = InferenceClient(model="HuggingFaceH4/zephyr-7b-beta", token=HF_TOKEN)
 
 # ============================================================
 # MODELLI DATI
@@ -140,7 +140,7 @@ def ask_llm(question: str, context: str):
     try:
         # === GENERAZIONE PRINCIPALE ===
         completion = client.chat.completions.create(
-            model="mistralai/Mistral-7B-Instruct-v0.3",
+            model="HuggingFaceH4/zephyr-7b-beta",
             messages=messages,
             max_tokens=350,
         )
@@ -165,7 +165,7 @@ def ask_llm(question: str, context: str):
             ]
 
             refinement = client.chat.completions.create(
-                model="mistralai/Mistral-7B-Instruct-v0.3",
+                model="HuggingFaceH4/zephyr-7b-beta",
                 messages=refine_messages,
                 max_tokens=250,
             )

@@ -3,6 +3,15 @@ import requests
 
 API_URL = "http://127.0.0.1:8000"
 
+CATEGORY_LABELS = {
+    "cs.AI": "Artificial Intelligence",
+    "cs.LG": "Machine Learning",
+    "cs.CL": "Computation & Language (NLP)",
+    "cs.CV": "Computer Vision",
+    "cs.IR": "Information Retrieval",
+    "upload": "Caricato da te",
+}
+
 st.set_page_config(
     page_title="AI Paper Assistant",
     page_icon="📚",
@@ -197,7 +206,9 @@ with st.sidebar:
                 st.error(f"Errore: {e}")
     st.markdown(
         "<p style='font-size:0.75rem;color:#475569;margin-top:2rem'>"
-        "Fonti: arXiv · cs.AI · cs.LG · cs.CL · cs.CV · cs.IR"
+        "Fonti: arXiv<br>"
+        "Artificial Intelligence · Machine Learning<br>"
+        "NLP · Computer Vision · Information Retrieval"
         "</p>",
         unsafe_allow_html=True,
     )
@@ -227,7 +238,8 @@ if page == "Ricerca Paper":
             by_cat = defaultdict(list)
             for p in papers:
                 by_cat[p["category"]].append(p)
-            tabs = st.tabs(list(by_cat.keys()))
+            tab_labels = [CATEGORY_LABELS.get(c, c) for c in by_cat.keys()]
+            tabs = st.tabs(tab_labels)
             for tab, cat in zip(tabs, by_cat.keys()):
                 with tab:
                     for p in by_cat[cat]:
@@ -237,7 +249,7 @@ if page == "Ricerca Paper":
                             f"<div class='paper-meta'>"
                             f"<span>ID {p['id']}</span>"
                             f"<span>{p['published']}</span>"
-                            f"<span class='paper-badge'>{p['category']}</span>"
+                            f"<span class='paper-badge'>{CATEGORY_LABELS.get(p['category'], p['category'])}</span>"
                             f"</div>"
                             f"<p class='paper-abstract'>{p['abstract']}...</p>"
                             f"</div>",
@@ -268,7 +280,8 @@ if page == "Ricerca Paper":
                     )
                     for p in papers:
                         category = p.get("category") or ""
-                        badge = f"<span class='paper-badge'>{category}</span>" if category else ""
+                        category_label = CATEGORY_LABELS.get(category, category)
+                        badge = f"<span class='paper-badge'>{category_label}</span>" if category else ""
                         st.markdown(
                             f"<div class='paper-card'>"
                             f"<a class='paper-title' href='{p['link']}' target='_blank'>{p['title']}</a>"

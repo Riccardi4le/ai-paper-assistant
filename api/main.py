@@ -112,69 +112,28 @@ def get_context(paper_id: int | None = None):
 # FUNZIONE PRINCIPALE AI 
 # ============================================================
 def ask_llm(question: str, context: str):
-    """
-    Interroga Mistral su Hugging Face con un prompt raffinato.
-    Se la risposta è già chiara, salta la rifinitura per risparmiare tempo.
-    """
-
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "Sei un assistente accademico che riassume e spiega paper scientifici "
-                "in italiano chiaro, corretto e professionale. "
-                "Scrivi con grammatica impeccabile e tono accademico, ma comprensibile."
-            ),
-        },
-        {
-            "role": "user",
-            "content": (
-                f"Contenuto del paper:\n\n{context}\n\n"
-                f"Domanda: {question}\n\n"
-                "Rispondi solo usando queste informazioni. "
-                "Se la risposta non è nel testo, scrivi: 'L'informazione non è presente nel paper'."
-            ),
-        },
-    ]
-
+    prompt = (
+        "<|system|>\n"
+        "Sei un assistente accademico. Rispondi in italiano chiaro e professionale "
+        "basandoti solo sul contenuto fornito. "
+        "Se l'informazione non e' presente, scrivi: 'Non presente nel paper'.\n</s>\n"
+        "<|user|>\n"
+        f"Contenuto del paper:\n{context[:2000]}\n\n"
+        f"Domanda: {question}\n</s>\n"
+        "<|assistant|>\n"
+    )
     try:
-        # === GENERAZIONE PRINCIPALE ===
-        completion = client.chat.completions.create(
-            model="HuggingFaceH4/zephyr-7b-beta",
-            messages=messages,
-            max_tokens=350,
+        response = client.text_generation(
+            prompt,
+            max_new_tokens=400,
+            temperature=0.4,
+            repetition_penalty=1.1,
+            stop_sequences=["</s>", "<|user|>"],
         )
-        raw_answer = completion.choices[0].message.content.strip()
-
-        # Pulizia base
-        for tag in ["[/INST]", "[/ASST]", "<s>", "</s>"]:
-            raw_answer = raw_answer.replace(tag, "")
-        raw_answer = raw_answer.strip()
-
-        # === SE NECESSARIO, RIFINITURA ===
-        if len(raw_answer.split()) < 20 or any(c in raw_answer for c in ["[", "]", "<", ">"]):
-            refine_messages = [
-                {
-                    "role": "system",
-                    "content": (
-                        "Agisci come un correttore professionale di testi accademici in italiano. "
-                        "Riscrivi il testo in forma fluida e grammaticale, mantenendo lo stesso significato."
-                    ),
-                },
-                {"role": "user", "content": raw_answer},
-            ]
-
-            refinement = client.chat.completions.create(
-                model="HuggingFaceH4/zephyr-7b-beta",
-                messages=refine_messages,
-                max_tokens=250,
-            )
-
-            refined_text = refinement.choices[0].message.content.strip()
-            return refined_text
-
-        return raw_answer
-
+        answer = response.strip()
+        for tag in ["<|assistant|>", "</s>", "<|user|>"]:
+            answer = answer.replace(tag, "").strip()
+        return answer if answer else "Nessuna risposta generata."
     except Exception as e:
         print(f"ERRORE HF: {type(e).__name__}: {e}")
         return f"Errore: {type(e).__name__} — {str(e)[:200]}"

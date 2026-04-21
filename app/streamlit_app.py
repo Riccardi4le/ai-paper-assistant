@@ -15,6 +15,21 @@ st.write("Cerca e analizza paper scientifici con un modello AI open-source da Hu
 with st.sidebar:
     st.header("🔍 Navigazione")
     page = st.selectbox("Seleziona sezione", ["Ricerca Paper", "Chat con l’assistente"])
+    st.divider()
+    if st.button("🔄 Aggiorna paper da arXiv"):
+        with st.spinner("Scarico nuovi paper..."):
+            try:
+                r = requests.post(f"{API_URL}/papers/ingest")
+                if r.status_code == 200:
+                    data = r.json()
+                    if data["status"] == "ok":
+                        st.success(f"Aggiunti {data[‘new_papers’]} nuovi paper!")
+                    else:
+                        st.error(f"Errore: {data.get(‘message’)}")
+                else:
+                    st.error(f"Errore API ({r.status_code})")
+            except Exception as e:
+                st.error(f"Errore: {e}")
 
 # -----------------------------------------------------------------------------
 # PAGINA 1 — RICERCA PAPER

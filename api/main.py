@@ -20,8 +20,8 @@ INGEST_PER_CATEGORY = 10
 # Modello embeddings (usato per ricerca semantica)
 embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
-# Client Hugging Face
-HF_TOKEN = os.getenv("HUGGINGFACE_API_TOKEN")
+# Client Hugging Face (legge HUGGINGFACE_API_TOKEN o HF_TOKEN)
+HF_TOKEN = os.getenv("HUGGINGFACE_API_TOKEN") or os.getenv("HF_TOKEN")
 client = InferenceClient(model="mistralai/Mistral-7B-Instruct-v0.3", token=HF_TOKEN)
 
 # ============================================================
@@ -176,8 +176,8 @@ def ask_llm(question: str, context: str):
         return raw_answer
 
     except Exception as e:
-        print(" ERRORE HF:", e)
-        return "Errore durante la generazione della risposta."
+        print(f"ERRORE HF: {type(e).__name__}: {e}")
+        return f"Errore: {type(e).__name__} — {str(e)[:200]}"
 
 # ============================================================
 # ENDPOINTS API

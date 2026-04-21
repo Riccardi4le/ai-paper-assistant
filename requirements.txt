@@ -1,6 +1,7 @@
 # Backend
 fastapi
 uvicorn
+pydantic
 
 # Frontend
 streamlit
@@ -12,6 +13,5 @@ huggingface_hub
 # Database & Utility
 python-dotenv
 requests
-sqlite3-binary
-PyPDF2
+pypdf
 faiss-cpu

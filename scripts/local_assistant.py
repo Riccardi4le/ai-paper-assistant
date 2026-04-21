@@ -3,7 +3,7 @@ import sqlite3
 import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 
 # Percorso DB e PDF
 DB_PATH = "data/app.db"

@@ -4,7 +4,7 @@ import faiss
 import numpy as np
 import subprocess
 from sentence_transformers import SentenceTransformer
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 
 DB_PATH = "data/app.db"
 PDF_DIR = "data/pdfs"

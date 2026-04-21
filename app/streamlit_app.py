@@ -56,10 +56,10 @@ elif page == "Chat con l’assistente":
     col1, col2 = st.columns(2)
     with col1:
         if st.button("📘 Di cosa parla questo paper?"):
-            st.session_state["question"] = "Di cosa parla questo paper?"
+            st.session_state["quick_question"] = "Di cosa parla questo paper?"
     with col2:
         if st.button("🧠 Riassumi questo paper"):
-            st.session_state["question"] = "Riassumi questo paper."
+            st.session_state["quick_question"] = "Riassumi questo paper."
 
     # Chat
     if "messages" not in st.session_state:
@@ -69,7 +69,7 @@ elif page == "Chat con l’assistente":
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
 
-    question = st.chat_input("Scrivi la tua domanda...")
+    question = st.chat_input("Scrivi la tua domanda...") or st.session_state.pop("quick_question", None)
 
     if question:
         st.session_state["messages"].append({"role": "user", "content": question})

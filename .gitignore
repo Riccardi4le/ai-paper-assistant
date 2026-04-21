@@ -1,5 +1,5 @@
-# Dati locali
-data/
+# PDF (file grandi, non necessari per il deploy)
+data/pdfs/
 __pycache__/
 *.pyc
 

@@ -25,6 +25,7 @@ client = InferenceClient(model="mistralai/Mistral-7B-Instruct-v0.3", token=HF_TO
 # ============================================================
 class QuestionRequest(BaseModel):
     question: str
+    paper_id: int | None = None
 
 # ============================================================
 # 🔍 FUNZIONI DATABASE
@@ -54,11 +55,13 @@ def get_papers(q: str = ""):
     return results
 
 
-def get_context():
-    """Recupera il testo di contesto dai paper"""
+def get_context(paper_id: int | None = None):
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
-    rows = cur.execute("SELECT summary FROM papers LIMIT 10").fetchall()
+    if paper_id:
+        rows = cur.execute("SELECT summary FROM papers WHERE id = ?", (paper_id,)).fetchall()
+    else:
+        rows = cur.execute("SELECT summary FROM papers LIMIT 10").fetchall()
     conn.close()
     return "\n\n".join([r[0] for r in rows if r[0]])
 
@@ -98,7 +101,7 @@ def ask_llm(question: str, context: str):
             messages=messages,
             max_tokens=350,
         )
-        raw_answer = completion.choices[0].message["content"].strip()
+        raw_answer = completion.choices[0].message.content.strip()
 
         # Pulizia base
         for tag in ["[/INST]", "[/ASST]", "<s>", "</s>"]:
@@ -124,7 +127,7 @@ def ask_llm(question: str, context: str):
                 max_tokens=250,
             )
 
-            refined_text = refinement.choices[0].message["content"].strip()
+            refined_text = refinement.choices[0].message.content.strip()
             return refined_text
 
         return raw_answer
@@ -146,7 +149,7 @@ def search_papers(q: str = ""):
 
 @app.post("/rag/answer")
 def rag_answer(req: QuestionRequest):
-    context = get_context()
+    context = get_context(req.paper_id)
     answer = ask_llm(req.question, context)
     return {"answer": answer}
 

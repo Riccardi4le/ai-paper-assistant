@@ -20,7 +20,10 @@ CREATE TABLE IF NOT EXISTS papers (
     title TEXT,
     summary TEXT,
     link TEXT UNIQUE,
-    published TEXT
+    published TEXT,
+    category TEXT,
+    authors TEXT,
+    pdf_path TEXT
 )
 """)
 

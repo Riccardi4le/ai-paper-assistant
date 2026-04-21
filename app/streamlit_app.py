@@ -18,13 +18,13 @@ html, body, [class*="css"] {
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
-/* ── Background ── */
+/* Background */
 .stApp {
     background: #0F172A;
     color: #E2E8F0;
 }
 
-/* ── Sidebar ── */
+/* Sidebar */
 [data-testid="stSidebar"] {
     background: #1E293B;
     border-right: 1px solid #334155;
@@ -37,7 +37,7 @@ html, body, [class*="css"] {
     color: #CBD5E1 !important;
 }
 
-/* ── Buttons ── */
+/* Buttons */
 .stButton > button {
     background: #6366F1;
     color: #FFFFFF;
@@ -57,7 +57,7 @@ html, body, [class*="css"] {
     transform: translateY(0px);
 }
 
-/* ── Text Input ── */
+/* Text Input */
 .stTextInput > div > div > input {
     background: #1E293B;
     color: #E2E8F0;
@@ -70,7 +70,7 @@ html, body, [class*="css"] {
     box-shadow: 0 0 0 2px rgba(99,102,241,0.25);
 }
 
-/* ── Number Input ── */
+/* Number Input */
 .stNumberInput > div > div > input {
     background: #1E293B;
     color: #E2E8F0;
@@ -78,7 +78,7 @@ html, body, [class*="css"] {
     border-radius: 8px;
 }
 
-/* ── Selectbox ── */
+/* Selectbox */
 .stSelectbox > div > div {
     background: #1E293B;
     color: #E2E8F0;
@@ -86,13 +86,13 @@ html, body, [class*="css"] {
     border-radius: 8px;
 }
 
-/* ── Divider ── */
+/* Divider */
 hr {
     border-color: #334155;
     margin: 1rem 0;
 }
 
-/* ── Paper card ── */
+/* Paper card */
 .paper-card {
     background: #1E293B;
     border: 1px solid #334155;
@@ -137,17 +137,14 @@ hr {
     line-height: 1.65;
 }
 
-/* ── Chat bubbles ── */
+/* Chat */
 [data-testid="stChatMessage"] {
     background: transparent !important;
     border-radius: 12px;
     margin-bottom: 0.5rem;
 }
-[data-testid="stChatMessage"][data-testid*="user"] {
-    background: #1E293B !important;
-}
 
-/* ── Chat input ── */
+/* Chat input */
 [data-testid="stChatInput"] > div {
     background: #1E293B;
     border: 1px solid #334155;
@@ -158,34 +155,23 @@ hr {
     background: transparent;
 }
 
-/* ── Spinner & alerts ── */
-.stSpinner > div { border-top-color: #6366F1 !important; }
-.stAlert { border-radius: 8px; }
-
-/* ── Titles ── */
+/* Titles */
 h1 { color: #F1F5F9 !important; font-weight: 700 !important; }
 h2, h3 { color: #CBD5E1 !important; font-weight: 600 !important; }
 
-/* ── Hero header ── */
+/* Hero header */
 .hero {
     padding: 2rem 0 1.5rem;
     border-bottom: 1px solid #1E293B;
     margin-bottom: 1.5rem;
 }
-.hero h1 {
-    font-size: 1.75rem !important;
-    margin-bottom: 0.25rem;
-}
-.hero p {
-    color: #64748B;
-    font-size: 0.9rem;
-    margin: 0;
-}
+.hero h1 { font-size: 1.75rem !important; margin-bottom: 0.25rem; }
+.hero p { color: #64748B; font-size: 0.9rem; margin: 0; }
 </style>
 """, unsafe_allow_html=True)
 
 
-# ── Sidebar ──────────────────────────────────────────────────
+# --- Sidebar ---
 with st.sidebar:
     st.markdown("## AI Paper Assistant")
     st.markdown("---")
@@ -217,24 +203,24 @@ with st.sidebar:
     )
 
 
-# ── Pagina 1 — Ricerca Paper ─────────────────────────────────
+# --- Pagina 1: Ricerca Paper ---
 if page == "Ricerca Paper":
     st.markdown(
         "<div class='hero'>"
         "<h1>Ricerca Paper Scientifici</h1>"
-        "<p>Cerca tra i paper più recenti da arXiv su AI, ML, NLP e Computer Vision</p>"
+        "<p>Cerca tra i paper piu recenti da arXiv su AI, ML, NLP e Computer Vision</p>"
         "</div>",
         unsafe_allow_html=True,
     )
 
     col_input, col_btn = st.columns([5, 1])
     with col_input:
-        q = st.text_input("", placeholder="Cerca per parola chiave…", label_visibility="collapsed")
+        q = st.text_input("", placeholder="Cerca per parola chiave...", label_visibility="collapsed")
     with col_btn:
         search = st.button("Cerca")
 
     if search or q:
-        with st.spinner("Ricerca in corso…"):
+        with st.spinner("Ricerca in corso..."):
             try:
                 r = requests.get(f"{API_URL}/papers/search", params={"q": q})
                 papers = r.json()
@@ -256,7 +242,7 @@ if page == "Ricerca Paper":
                             f"<span>{p.get('published','')[:10]}</span>"
                             f"{badge}"
                             f"</div>"
-                            f"<p class='paper-abstract'>{p['abstract'][:320]}…</p>"
+                            f"<p class='paper-abstract'>{p['abstract'][:320]}...</p>"
                             f"</div>",
                             unsafe_allow_html=True,
                         )
@@ -266,21 +252,20 @@ if page == "Ricerca Paper":
                 st.error(f"Errore di connessione: {e}")
 
 
-# ── Pagina 2 — Chat ──────────────────────────────────────────
+# --- Pagina 2: Chat ---
 elif page == "Chat con l'assistente":
     st.markdown(
         "<div class='hero'>"
         "<h1>Chat con l'Assistente AI</h1>"
-        "<p>Fai domande su un paper specifico — l'AI risponde basandosi sul suo contenuto</p>"
+        "<p>Fai domande su un paper specifico - l'AI risponde basandosi sul suo contenuto</p>"
         "</div>",
         unsafe_allow_html=True,
     )
 
     col_id, _ = st.columns([2, 5])
     with col_id:
-        paper_id = st.number_input("ID del paper", min_value=1, step=1, label_visibility="visible")
+        paper_id = st.number_input("ID del paper", min_value=1, step=1)
 
-    # Quick buttons
     col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("Di cosa parla?"):
@@ -290,7 +275,7 @@ elif page == "Chat con l'assistente":
             st.session_state["quick_question"] = "Riassumi questo paper in modo chiaro e conciso."
     with col3:
         if st.button("Metodologia"):
-            st.session_state["quick_question"] = "Qual è la metodologia usata in questo paper?"
+            st.session_state["quick_question"] = "Qual e' la metodologia usata in questo paper?"
 
     st.markdown("---")
 
@@ -301,7 +286,7 @@ elif page == "Chat con l'assistente":
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
 
-    question = st.chat_input("Scrivi la tua domanda…") or st.session_state.pop("quick_question", None)
+    question = st.chat_input("Scrivi la tua domanda...") or st.session_state.pop("quick_question", None)
 
     if question:
         st.session_state["messages"].append({"role": "user", "content": question})
@@ -309,7 +294,7 @@ elif page == "Chat con l'assistente":
             st.write(question)
 
         with st.chat_message("assistant"):
-            with st.spinner("L'assistente sta pensando…"):
+            with st.spinner("L'assistente sta pensando..."):
                 try:
                     r = requests.post(
                         f"{API_URL}/rag/answer",

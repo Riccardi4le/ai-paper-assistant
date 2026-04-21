@@ -22,7 +22,7 @@ embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
 # Client Hugging Face (legge HUGGINGFACE_API_TOKEN o HF_TOKEN)
 HF_TOKEN = os.getenv("HUGGINGFACE_API_TOKEN") or os.getenv("HF_TOKEN")
-client = InferenceClient(model="HuggingFaceH4/zephyr-7b-beta", token=HF_TOKEN)
+client = InferenceClient(model="Qwen/Qwen2.5-7B-Instruct", token=HF_TOKEN)
 
 # ============================================================
 # MODELLI DATI
@@ -112,28 +112,28 @@ def get_context(paper_id: int | None = None):
 # FUNZIONE PRINCIPALE AI 
 # ============================================================
 def ask_llm(question: str, context: str):
-    prompt = (
-        "<|system|>\n"
-        "Sei un assistente accademico. Rispondi in italiano chiaro e professionale "
-        "basandoti solo sul contenuto fornito. "
-        "Se l'informazione non e' presente, scrivi: 'Non presente nel paper'.\n</s>\n"
-        "<|user|>\n"
-        f"Contenuto del paper:\n{context[:2000]}\n\n"
-        f"Domanda: {question}\n</s>\n"
-        "<|assistant|>\n"
-    )
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "Sei un assistente accademico. Rispondi in italiano chiaro e professionale "
+                "basandoti solo sul contenuto fornito. "
+                "Se l'informazione non e' presente scrivi: 'Non presente nel paper'."
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"Contenuto del paper:\n{context[:2000]}\n\nDomanda: {question}",
+        },
+    ]
     try:
-        response = client.text_generation(
-            prompt,
-            max_new_tokens=400,
+        completion = client.chat.completions.create(
+            model="Qwen/Qwen2.5-7B-Instruct",
+            messages=messages,
+            max_tokens=400,
             temperature=0.4,
-            repetition_penalty=1.1,
-            stop_sequences=["</s>", "<|user|>"],
         )
-        answer = response.strip()
-        for tag in ["<|assistant|>", "</s>", "<|user|>"]:
-            answer = answer.replace(tag, "").strip()
-        return answer if answer else "Nessuna risposta generata."
+        return completion.choices[0].message.content.strip()
     except Exception as e:
         print(f"ERRORE HF: {type(e).__name__}: {e}")
         return f"Errore: {type(e).__name__} — {str(e)[:200]}"

@@ -61,7 +61,7 @@ def get_papers(q: str = ""):
     return results
 
 
-def run_ingest() -> int:
+def run_ingest() -> dict:
     ns = {"atom": "http://www.w3.org/2005/Atom"}
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
@@ -72,7 +72,7 @@ def run_ingest() -> int:
             published TEXT, category TEXT, authors TEXT, pdf_path TEXT
         )
     """)
-    new_count = 0
+    new_papers = []
     for cat in INGEST_CATEGORIES:
         url = (
             f"http://export.arxiv.org/api/query?search_query=cat:{cat}"
@@ -94,10 +94,19 @@ def run_ingest() -> int:
                 "INSERT OR IGNORE INTO papers (title, summary, link, published, category, authors) VALUES (?,?,?,?,?,?)",
                 (title, summary, link, published, cat, authors),
             )
-            new_count += cur.rowcount
+            if cur.rowcount:
+                new_papers.append({
+                    "id": cur.lastrowid,
+                    "title": title,
+                    "link": link,
+                    "published": published[:10],
+                    "category": cat,
+                    "authors": authors,
+                    "abstract": summary[:200],
+                })
     conn.commit()
     conn.close()
-    return new_count
+    return {"count": len(new_papers), "papers": new_papers}
 
 
 def get_context(paper_id: int | None = None):
@@ -160,8 +169,8 @@ def rag_answer(req: QuestionRequest):
 @app.post("/papers/ingest")
 def ingest_papers():
     try:
-        new_count = run_ingest()
-        return {"status": "ok", "new_papers": new_count}
+        result = run_ingest()
+        return {"status": "ok", "new_papers": result["count"], "papers": result["papers"]}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 

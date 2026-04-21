@@ -188,7 +188,7 @@ with st.sidebar:
                 if r.status_code == 200:
                     data = r.json()
                     if data["status"] == "ok":
-                        st.success(f"Aggiunti {data['new_papers']} nuovi paper!")
+                        st.session_state["ingest_result"] = data
                     else:
                         st.error(f"Errore: {data.get('message')}")
                 else:
@@ -212,6 +212,41 @@ if page == "Ricerca Paper":
         "</div>",
         unsafe_allow_html=True,
     )
+
+    # Mostra risultato ingest se disponibile
+    if "ingest_result" in st.session_state:
+        data = st.session_state["ingest_result"]
+        n = data["new_papers"]
+        papers = data.get("papers", [])
+        if n == 0:
+            st.info("Nessun nuovo paper trovato — il database e' gia' aggiornato.")
+        else:
+            st.success(f"Aggiunti {n} nuovi paper!")
+            # Raggruppa per categoria
+            from collections import defaultdict
+            by_cat = defaultdict(list)
+            for p in papers:
+                by_cat[p["category"]].append(p)
+            tabs = st.tabs(list(by_cat.keys()))
+            for tab, cat in zip(tabs, by_cat.keys()):
+                with tab:
+                    for p in by_cat[cat]:
+                        st.markdown(
+                            f"<div class='paper-card'>"
+                            f"<a class='paper-title' href='{p['link']}' target='_blank'>{p['title']}</a>"
+                            f"<div class='paper-meta'>"
+                            f"<span>ID {p['id']}</span>"
+                            f"<span>{p['published']}</span>"
+                            f"<span class='paper-badge'>{p['category']}</span>"
+                            f"</div>"
+                            f"<p class='paper-abstract'>{p['abstract']}...</p>"
+                            f"</div>",
+                            unsafe_allow_html=True,
+                        )
+        if st.button("Chiudi", key="close_ingest"):
+            del st.session_state["ingest_result"]
+            st.rerun()
+        st.markdown("---")
 
     col_input, col_btn = st.columns([5, 1])
     with col_input:

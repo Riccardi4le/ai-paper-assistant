@@ -177,7 +177,7 @@ with st.sidebar:
     st.markdown("---")
     page = st.selectbox(
         "Sezione",
-        ["Ricerca Paper", "Chat con l'assistente"],
+        ["Ricerca Paper", "Carica Paper", "Chat con l'assistente"],
         label_visibility="collapsed",
     )
     st.markdown("---")
@@ -252,7 +252,69 @@ if page == "Ricerca Paper":
                 st.error(f"Errore di connessione: {e}")
 
 
-# --- Pagina 2: Chat ---
+# --- Pagina 2: Carica Paper ---
+elif page == "Carica Paper":
+    st.markdown(
+        "<div class='hero'>"
+        "<h1>Carica un Paper PDF</h1>"
+        "<p>Carica un file PDF e chatta con l'assistente sul suo contenuto</p>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    uploaded_file = st.file_uploader(
+        "Seleziona un file PDF",
+        type=["pdf"],
+        label_visibility="visible",
+    )
+
+    if uploaded_file is not None:
+        with st.spinner("Analisi del PDF in corso..."):
+            try:
+                r = requests.post(
+                    f"{API_URL}/papers/upload",
+                    files={"file": (uploaded_file.name, uploaded_file.getvalue(), "application/pdf")},
+                )
+                if r.status_code == 200:
+                    data = r.json()
+                    st.success(
+                        f"Paper caricato con successo! "
+                        f"**ID: {data['paper_id']}** · {data['pages']} pagine"
+                    )
+                    st.markdown(
+                        f"<div class='paper-card'>"
+                        f"<span class='paper-title'>{data['title']}</span>"
+                        f"<div class='paper-meta'>"
+                        f"<span>ID {data['paper_id']}</span>"
+                        f"<span class='paper-badge'>upload</span>"
+                        f"</div>"
+                        f"<p class='paper-abstract'>"
+                        f"Usa l'ID <strong>{data['paper_id']}</strong> nella sezione "
+                        f"<em>Chat con l'assistente</em> per fare domande su questo paper."
+                        f"</p>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.session_state["last_uploaded_id"] = data["paper_id"]
+                else:
+                    detail = r.json().get("detail", r.text)
+                    st.error(f"Errore: {detail}")
+            except Exception as e:
+                st.error(f"Errore di connessione: {e}")
+
+    if "last_uploaded_id" in st.session_state:
+        st.markdown("---")
+        st.markdown(
+            f"<p style='color:#64748B;font-size:0.85rem'>"
+            f"Ultimo paper caricato: ID <strong style='color:#818CF8'>"
+            f"{st.session_state['last_uploaded_id']}</strong> — "
+            f"vai su <em>Chat con l'assistente</em> per interrogarlo."
+            f"</p>",
+            unsafe_allow_html=True,
+        )
+
+
+# --- Pagina 3: Chat ---
 elif page == "Chat con l'assistente":
     st.markdown(
         "<div class='hero'>"

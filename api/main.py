@@ -1,12 +1,14 @@
 import os
+import io
 import sqlite3
 import xml.etree.ElementTree as ET
 import requests as http_requests
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
 from huggingface_hub import InferenceClient
 from dotenv import load_dotenv
+from pypdf import PdfReader
 
 # ============================================================
 # CONFIGURAZIONE
@@ -162,6 +164,43 @@ def ingest_papers():
         return {"status": "ok", "new_papers": new_count}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+@app.post("/papers/upload")
+async def upload_paper(file: UploadFile = File(...)):
+    if not file.filename.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Solo file PDF sono accettati.")
+    try:
+        contents = await file.read()
+        reader = PdfReader(io.BytesIO(contents))
+        text = "\n".join(
+            page.extract_text() or "" for page in reader.pages
+        ).strip()
+        if not text:
+            raise HTTPException(status_code=422, detail="Impossibile estrarre testo dal PDF.")
+        title = file.filename.replace(".pdf", "")
+        summary = text[:4000]
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS papers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT, summary TEXT, link TEXT UNIQUE,
+                published TEXT, category TEXT, authors TEXT, pdf_path TEXT
+            )
+        """)
+        cur.execute(
+            "INSERT INTO papers (title, summary, link, published, category, authors) VALUES (?,?,?,?,?,?)",
+            (title, summary, f"upload://{file.filename}", "uploaded", "upload", ""),
+        )
+        paper_id = cur.lastrowid
+        conn.commit()
+        conn.close()
+        return {"status": "ok", "paper_id": paper_id, "title": title, "pages": len(reader.pages)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/favicon.ico")
 def favicon():

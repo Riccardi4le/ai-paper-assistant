@@ -10,3 +10,11 @@ __pycache__/
 # Cache
 *.log
 *.sqlite3
+.pytest_cache/
+
+# Runtime artifacts (rigenerati dall'API al boot)
+data/*.db
+data/*.index
+
+# Tooling agent
+.claude/

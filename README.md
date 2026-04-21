@@ -28,11 +28,12 @@ pinned: false
 
 **AI Paper Assistant** is a full-stack web app that integrates Machine Learning and Large Language Models to automatically analyze scientific papers in AI and Computer Science.
 
-It downloads papers from arXiv, extracts abstracts and metadata, indexes them in a local vector database, and lets you:
+It downloads papers from arXiv, chunks them, embeds every chunk with a Sentence-Transformer, and indexes the vectors in a local **FAISS** store. At query time, the same embedder turns your question into a vector, FAISS returns the top-k most similar chunks, and a Hugging Face LLM answers grounded in that context.
 
-- 🔍 Search papers by keyword
+- 🔍 Semantic search over titles + abstracts (FAISS, cosine similarity)
 - 📄 Read paper details and metadata
-- 💬 Ask questions and get AI-generated summaries via a **RAG pipeline**
+- 💬 Ask questions and get AI-generated answers via a real **RAG pipeline** (embed → retrieve → generate)
+- 📎 Upload a PDF, get it chunked + indexed, then chat with it
 - ☁️ Run locally or deploy on **Hugging Face Spaces** for free
 
 > **Low-cost · Open-source · Production-ready**
@@ -44,14 +45,20 @@ It downloads papers from arXiv, extracts abstracts and metadata, indexes them in
 ```
 ai-paper-assistant/
 ├── api/
-│   └── main.py               # FastAPI backend — REST API + RAG pipeline
+│   ├── main.py               # FastAPI backend — REST API, embedding, FAISS, RAG
+│   └── rag_utils.py          # Pure helpers (chunking) — dep-light, unit-tested
 ├── app/
 │   └── streamlit_app.py      # Interactive Streamlit frontend
 ├── data/
-│   └── app.db                # SQLite database (paper metadata)
+│   ├── app.db                # SQLite (papers + chunks with embedding BLOBs)
+│   └── faiss.index           # Persisted FAISS IndexIDMap (auto-created)
 ├── scripts/
 │   ├── ingest_arxiv.py       # Lightweight arXiv ingestion (no PDFs)
 │   └── ingest_arxiv_api.py   # Full ingestion with PDF download
+├── tests/
+│   └── test_chunking.py      # Unit tests (pytest)
+├── evals/
+│   └── retrieval_eval.py     # recall@k / MRR over the live FAISS index
 ├── app.py                    # Entry point for Hugging Face Spaces
 ├── Dockerfile
 ├── requirements.txt
@@ -61,9 +68,15 @@ ai-paper-assistant/
 ### RAG Pipeline
 
 ```
-arXiv API → Ingestion → SQLite → Summaries as Context
-                                        ↓
-User Query → FastAPI → Mistral-7B (HuggingFace Inference API) → Answer
+arXiv / PDF  ─►  chunk (900 chars, 150 overlap)  ─►  MiniLM-L6-v2 embed
+                                                           │
+                                                           ▼
+                                                   FAISS (IndexFlatIP)
+                                                           │
+                User question ─► embed ─► top-k cosine ─► chunks
+                                                           │
+                                                           ▼
+                                         Qwen2.5-7B (HF Inference) ─► Answer
 ```
 
 ---
@@ -74,9 +87,10 @@ User Query → FastAPI → Mistral-7B (HuggingFace Inference API) → Answer
 |-------|-----------|---------|
 | **Frontend** | Streamlit | Interactive web UI |
 | **Backend** | FastAPI | REST API & RAG orchestration |
-| **LLM** | Mistral-7B (Hugging Face) | Q&A and summarization |
-| **Embeddings** | Sentence-Transformers (MiniLM-L6-v2) | Semantic search |
-| **Database** | SQLite | Paper metadata storage |
+| **LLM** | Qwen2.5-7B-Instruct (Hugging Face) | Grounded Q&A |
+| **Embeddings** | Sentence-Transformers (MiniLM-L6-v2, 384-d) | Encode chunks & queries |
+| **Vector store** | FAISS (`IndexIDMap` over `IndexFlatIP`) | Top-k cosine retrieval |
+| **Database** | SQLite | Paper metadata + chunk text + embedding BLOBs |
 | **Hosting** | Hugging Face Spaces (Docker) | Free cloud deployment |
 
 ---
@@ -122,7 +136,21 @@ The app auto-ingests papers from arXiv on first run if the database is empty.
 python scripts/ingest_arxiv_api.py
 ```
 
-Categories indexed by default: `cs.AI`, `cs.CL`, `cs.LG`, `cs.CV`, `cs.IR`, `cs.DS`
+Categories indexed by default: `cs.AI`, `cs.CL`, `cs.LG`, `cs.CV`, `cs.IR`
+
+### Run tests
+
+```bash
+pip install pytest
+pytest tests/ -v
+```
+
+### Run retrieval eval
+
+```bash
+# Evaluates recall@1 / recall@k / MRR across three query styles
+python -m evals.retrieval_eval --limit 50 --k 5
+```
 
 ---
 
@@ -136,20 +164,24 @@ Categories indexed by default: `cs.AI`, `cs.CL`, `cs.LG`, `cs.CV`, `cs.IR`, `cs.
 
 ## How It Works
 
-1. **Ingestion** — Pulls the latest papers from arXiv via the public API
-2. **Storage** — Saves title, abstract, authors, category and publication date in SQLite
-3. **Retrieval** — On each query, the relevant paper's abstract is used as context
-4. **Generation** — Mistral-7B generates an answer grounded in the retrieved context
+1. **Ingestion** — Pulls the latest papers from arXiv via the public API (or accepts a PDF upload)
+2. **Chunk + embed** — Splits text into overlapping chunks (900 chars, 150 overlap) and encodes them with MiniLM-L6-v2
+3. **Index** — Stores chunk text + embedding BLOB in SQLite and adds the vector to a persisted FAISS index (`data/faiss.index`)
+4. **Retrieve** — Embeds the user question, runs cosine top-k via FAISS (global) or in-paper (scoped when `paper_id` is set)
+5. **Generate** — The retrieved chunks are sent to Qwen2.5-7B-Instruct as grounded context for the final answer
+6. **Backfill** — On API startup, any paper missing chunks is embedded automatically; `POST /admin/reindex` rebuilds FAISS from the SQLite source of truth
 
 ---
 
 ## Roadmap
 
+- [x] Full PDF chunking + FAISS semantic search in the API
 - [ ] Daily automated ingestion via GitHub Actions
-- [ ] "Related Work" analysis across similar papers
+- [ ] "Related Work" analysis across similar papers (k-NN over FAISS)
 - [ ] Email/RSS notifications for new papers in chosen categories
 - [ ] User system with favorites and alerts
-- [ ] Full PDF chunking + FAISS semantic search in the API
+- [x] Retrieval eval harness (recall@k, MRR) — see `evals/retrieval_eval.py`
+- [ ] Answer-faithfulness eval (LLM-as-judge on grounded Q/A)
 
 ---
 

@@ -1,6 +1,7 @@
 import os
 import io
 import sqlite3
+import threading
 import xml.etree.ElementTree as ET
 
 import numpy as np
@@ -31,6 +32,10 @@ EMB_DIM = 384
 TOP_K_CONTEXT = 5
 TOP_K_SEARCH = 60
 
+MAX_UPLOAD_MB = 25
+MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+MAX_CHUNKS_PER_UPLOAD = 600
+
 os.makedirs("data", exist_ok=True)
 
 # Embedder: usato per encodare query, abstract e chunk di PDF
@@ -40,6 +45,11 @@ embedder = SentenceTransformer(EMB_MODEL)
 def _new_index() -> faiss.Index:
     # Inner product su vettori L2-normalizzati == cosine similarity
     return faiss.IndexIDMap(faiss.IndexFlatIP(EMB_DIM))
+
+
+# FAISS non e' thread-safe per add/search concorrenti: FastAPI esegue gli
+# endpoint sync in un threadpool, quindi ogni accesso all'indice passa da qui.
+_index_lock = threading.Lock()
 
 
 if os.path.exists(FAISS_PATH):
@@ -115,7 +125,14 @@ def _persist_index() -> None:
         print(f"WARN: write_index fallita: {e}")
 
 
-def _add_chunks_for_paper(conn: sqlite3.Connection, paper_id: int, texts: list[str]) -> int:
+def _add_chunks_for_paper(
+    conn: sqlite3.Connection, paper_id: int, texts: list[str], persist: bool = True
+) -> int:
+    """Embedda i testi, li salva in SQLite e li aggiunge a FAISS.
+
+    Con `persist=False` l'indice non viene riscritto su disco: i chiamanti
+    batch (ingest, backfill) persistono una sola volta a fine giro.
+    """
     texts = [t for t in texts if t and t.strip()]
     if not texts:
         return 0
@@ -130,8 +147,10 @@ def _add_chunks_for_paper(conn: sqlite3.Connection, paper_id: int, texts: list[s
         chunk_ids.append(cur.lastrowid)
     conn.commit()
     ids_arr = np.asarray(chunk_ids, dtype="int64")
-    faiss_index.add_with_ids(vecs, ids_arr)
-    _persist_index()
+    with _index_lock:
+        faiss_index.add_with_ids(vecs, ids_arr)
+        if persist:
+            _persist_index()
     return len(texts)
 
 
@@ -149,8 +168,11 @@ def _backfill_missing_chunks() -> int:
         for pid, title, summary in rows:
             text = ((title or "") + "\n\n" + (summary or "")).strip()
             pieces = _chunk_text(text)
-            if pieces and _add_chunks_for_paper(conn, pid, pieces):
+            if pieces and _add_chunks_for_paper(conn, pid, pieces, persist=False):
                 count += 1
+        if count:
+            with _index_lock:
+                _persist_index()
         return count
     finally:
         conn.close()
@@ -176,11 +198,12 @@ def _fetch_papers_by_ids(conn: sqlite3.Connection, paper_ids: list[int]) -> dict
 
 
 def semantic_search_papers(q: str, limit: int = 20) -> list[dict]:
-    if faiss_index.ntotal == 0:
-        return []
     query_vec = _embed([q])
-    k = min(max(limit * 3, TOP_K_SEARCH), int(faiss_index.ntotal))
-    scores, ids = faiss_index.search(query_vec, k)
+    with _index_lock:
+        if faiss_index.ntotal == 0:
+            return []
+        k = min(max(limit * 3, TOP_K_SEARCH), int(faiss_index.ntotal))
+        scores, ids = faiss_index.search(query_vec, k)
     pairs = [(int(cid), float(s)) for cid, s in zip(ids[0], scores[0]) if cid != -1]
     if not pairs:
         return []
@@ -267,10 +290,11 @@ def retrieve_context(question: str, paper_id: int | None = None, k: int = TOP_K_
             top_idx = np.argsort(-scores)[: min(k, len(rows))]
             return "\n\n".join(rows[i][1] for i in top_idx)
 
-        if faiss_index.ntotal == 0:
-            return ""
-        k_eff = min(k, int(faiss_index.ntotal))
-        _, ids = faiss_index.search(query_vec.reshape(1, -1), k_eff)
+        with _index_lock:
+            if faiss_index.ntotal == 0:
+                return ""
+            k_eff = min(k, int(faiss_index.ntotal))
+            _, ids = faiss_index.search(query_vec.reshape(1, -1), k_eff)
         chunk_ids = [int(i) for i in ids[0] if i != -1]
         if not chunk_ids:
             return ""
@@ -319,7 +343,7 @@ def run_ingest() -> dict:
                     paper_id = cur.lastrowid
                     conn.commit()
                     text = (title + "\n\n" + summary).strip()
-                    _add_chunks_for_paper(conn, paper_id, _chunk_text(text))
+                    _add_chunks_for_paper(conn, paper_id, _chunk_text(text), persist=False)
                     new_papers.append({
                         "id": paper_id,
                         "title": title,
@@ -332,6 +356,9 @@ def run_ingest() -> dict:
         conn.commit()
     finally:
         conn.close()
+    if new_papers:
+        with _index_lock:
+            _persist_index()
     return {"count": len(new_papers), "papers": new_papers}
 
 # ============================================================
@@ -363,8 +390,12 @@ def ask_llm(question: str, context: str) -> str:
         )
         return completion.choices[0].message.content.strip()
     except Exception as e:
+        # Log interno completo, ma niente dettagli implementativi al client
         print(f"ERRORE HF: {type(e).__name__}: {e}")
-        return f"Errore: {type(e).__name__} - {str(e)[:200]}"
+        raise HTTPException(
+            status_code=502,
+            detail="Il servizio di generazione non e' al momento disponibile. Riprova tra qualche istante.",
+        )
 
 # ============================================================
 # STARTUP HOOK
@@ -405,9 +436,13 @@ def rag_answer(req: QuestionRequest):
 def ingest_papers():
     try:
         result = run_ingest()
-        return {"status": "ok", "new_papers": result["count"], "papers": result["papers"]}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        print(f"ERRORE ingest: {type(e).__name__}: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail="Ingest da arXiv fallito. Riprova piu' tardi.",
+        )
+    return {"status": "ok", "new_papers": result["count"], "papers": result["papers"]}
 
 
 @app.post("/papers/upload")
@@ -416,12 +451,21 @@ async def upload_paper(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Solo file PDF sono accettati.")
     try:
         contents = await file.read()
+        if len(contents) > MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File troppo grande: il limite e' {MAX_UPLOAD_MB} MB.",
+            )
         reader = PdfReader(io.BytesIO(contents))
         text = "\n".join(page.extract_text() or "" for page in reader.pages).strip()
         if not text:
             raise HTTPException(status_code=422, detail="Impossibile estrarre testo dal PDF.")
-        title = file.filename.replace(".pdf", "")
+        title = file.filename.removesuffix(".pdf")
         abstract = text[:4000]
+        pieces = _chunk_text(text)
+        truncated = len(pieces) > MAX_CHUNKS_PER_UPLOAD
+        if truncated:
+            pieces = pieces[:MAX_CHUNKS_PER_UPLOAD]
         conn = _connect()
         try:
             _init_schema(conn)
@@ -432,7 +476,7 @@ async def upload_paper(file: UploadFile = File(...)):
             )
             paper_id = cur.lastrowid
             conn.commit()
-            chunks_added = _add_chunks_for_paper(conn, paper_id, _chunk_text(text))
+            chunks_added = _add_chunks_for_paper(conn, paper_id, pieces)
         finally:
             conn.close()
         return {
@@ -441,6 +485,7 @@ async def upload_paper(file: UploadFile = File(...)):
             "title": title,
             "pages": len(reader.pages),
             "chunks": chunks_added,
+            "truncated": truncated,
         }
     except HTTPException:
         raise
@@ -463,8 +508,9 @@ def reindex():
         ids = np.asarray([r[0] for r in rows], dtype="int64")
         vecs = np.vstack([np.frombuffer(r[1], dtype="float32") for r in rows]).astype("float32")
         new_idx.add_with_ids(vecs, ids)
-    faiss_index = new_idx
-    _persist_index()
+    with _index_lock:
+        faiss_index = new_idx
+        _persist_index()
     backfilled = _backfill_missing_chunks()
     return {
         "status": "ok",

@@ -1,16 +1,33 @@
-import streamlit as st
+import html
+import os
+
 import requests
+import streamlit as st
 
-API_URL = "http://127.0.0.1:8000"
+API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
 
-CATEGORY_LABELS = {
-    "cs.AI": "Artificial Intelligence",
-    "cs.LG": "Machine Learning",
-    "cs.CL": "Computation & Language (NLP)",
-    "cs.CV": "Computer Vision",
-    "cs.IR": "Information Retrieval",
-    "upload": "Caricato da te",
+# Timeout (secondi) per le chiamate all'API: senza, la UI resta appesa
+# se il backend è bloccato (es. ingest o embedding in corso).
+TIMEOUT_SEARCH = 30
+TIMEOUT_INGEST = 300
+TIMEOUT_UPLOAD = 300
+TIMEOUT_RAG = 120
+
+# (label, classe css del badge) per categoria arXiv
+CATEGORY_META = {
+    "cs.AI": ("Artificial Intelligence", "badge-ai"),
+    "cs.LG": ("Machine Learning", "badge-lg"),
+    "cs.CL": ("NLP", "badge-cl"),
+    "cs.CV": ("Computer Vision", "badge-cv"),
+    "cs.IR": ("Information Retrieval", "badge-ir"),
+    "upload": ("Caricato da te", "badge-upload"),
 }
+
+
+def esc(value) -> str:
+    """Escape HTML: i dati arrivano da arXiv / nomi file utente."""
+    return html.escape(str(value or ""), quote=True)
+
 
 st.set_page_config(
     page_title="AI Paper Assistant",
@@ -21,195 +38,420 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+    --bg: #0B1120;
+    --surface: #151E31;
+    --surface-2: #1E293B;
+    --border: #283349;
+    --border-strong: #334155;
+    --primary: #6366F1;
+    --primary-hover: #4F46E5;
+    --primary-soft: rgba(99, 102, 241, 0.14);
+    --primary-ring: rgba(99, 102, 241, 0.38);
+    --text-strong: #F8FAFC;
+    --text: #E2E8F0;
+    --text-muted: #94A3B8;
+    --text-faint: #64748B;
+    --radius: 12px;
+}
 
 html, body, [class*="css"] {
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
-/* Background */
+/* ---------- Background ---------- */
 .stApp {
-    background: #0F172A;
-    color: #E2E8F0;
+    background:
+        radial-gradient(1100px 420px at 50% -120px, rgba(99, 102, 241, 0.13), transparent 70%),
+        var(--bg);
+    color: var(--text);
 }
 
-/* Sidebar */
+/* ---------- Sidebar ---------- */
 [data-testid="stSidebar"] {
-    background: #1E293B;
-    border-right: 1px solid #334155;
+    background: #0E1627;
+    border-right: 1px solid var(--border);
 }
-[data-testid="stSidebar"] .stSelectbox label,
 [data-testid="stSidebar"] p,
-[data-testid="stSidebar"] h1,
-[data-testid="stSidebar"] h2,
-[data-testid="stSidebar"] h3 {
-    color: #CBD5E1 !important;
+[data-testid="stSidebar"] label {
+    color: var(--text-muted);
 }
 
-/* Buttons */
-.stButton > button {
-    background: #6366F1;
-    color: #FFFFFF;
-    border: none;
-    border-radius: 8px;
-    padding: 0.5rem 1.25rem;
-    font-weight: 500;
-    font-size: 0.875rem;
-    transition: background 0.2s ease, transform 0.1s ease;
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.4rem 0 0.9rem;
+}
+.brand-logo {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #6366F1, #22D3EE);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.brand-name {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--text-strong);
+    line-height: 1.2;
+}
+.brand-sub {
+    font-size: 0.72rem;
+    color: var(--text-faint);
+}
+
+/* Nav (radio) come lista di voci */
+[data-testid="stSidebar"] [role="radiogroup"] {
+    gap: 4px;
+}
+[data-testid="stSidebar"] [role="radiogroup"] label {
     width: 100%;
+    padding: 0.55rem 0.85rem;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
 }
-.stButton > button:hover {
-    background: #4F46E5;
-    transform: translateY(-1px);
+[data-testid="stSidebar"] [role="radiogroup"] label:hover {
+    background: rgba(148, 163, 184, 0.08);
 }
-.stButton > button:active {
-    transform: translateY(0px);
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {
+    background: var(--primary-soft);
+    border-color: rgba(99, 102, 241, 0.35);
 }
-
-/* Text Input */
-.stTextInput > div > div > input {
-    background: #1E293B;
-    color: #E2E8F0;
-    border: 1px solid #334155;
-    border-radius: 8px;
-    padding: 0.6rem 1rem;
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) p {
+    color: #C7D2FE;
+    font-weight: 600;
 }
-.stTextInput > div > div > input:focus {
-    border-color: #6366F1;
-    box-shadow: 0 0 0 2px rgba(99,102,241,0.25);
+/* nasconde il pallino del radio */
+[data-testid="stSidebar"] [role="radiogroup"] label > div:first-child {
+    display: none;
 }
-
-/* Number Input */
-.stNumberInput > div > div > input {
-    background: #1E293B;
-    color: #E2E8F0;
-    border: 1px solid #334155;
-    border-radius: 8px;
+[data-testid="stSidebar"] [role="radiogroup"] label p {
+    font-size: 0.875rem;
+    color: var(--text);
 }
 
-/* Selectbox */
-.stSelectbox > div > div {
-    background: #1E293B;
-    color: #E2E8F0;
-    border: 1px solid #334155;
-    border-radius: 8px;
+.sidebar-footer {
+    font-size: 0.72rem;
+    color: var(--text-faint);
+    line-height: 1.7;
+    margin-top: 1.5rem;
 }
 
-/* Divider */
-hr {
-    border-color: #334155;
-    margin: 1rem 0;
+/* ---------- Bottoni ---------- */
+.stButton > button {
+    border-radius: 10px;
+    padding: 0.55rem 1.25rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+    width: 100%;
+    min-height: 44px;
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.stButton > button[kind="primary"] {
+    background: var(--primary);
+    color: #FFFFFF;
+    border: 1px solid transparent;
+}
+.stButton > button[kind="primary"]:hover {
+    background: var(--primary-hover);
+}
+.stButton > button[kind="secondary"] {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border-strong);
+}
+.stButton > button[kind="secondary"]:hover {
+    border-color: var(--primary);
+    color: #C7D2FE;
+    background: var(--primary-soft);
+}
+.stButton > button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--primary-ring);
 }
 
-/* Paper card */
+/* ---------- Input ---------- */
+.stTextInput input,
+.stNumberInput input {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border-strong) !important;
+    border-radius: 10px !important;
+    padding: 0.6rem 1rem !important;
+    min-height: 44px;
+}
+.stTextInput input:focus,
+.stNumberInput input:focus {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 3px var(--primary-ring) !important;
+}
+.stTextInput > div > div,
+.stNumberInput > div > div {
+    background: transparent !important;
+    border: none !important;
+}
+
+/* ---------- File uploader ---------- */
+[data-testid="stFileUploaderDropzone"] {
+    background: var(--surface);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius);
+}
+[data-testid="stFileUploaderDropzone"]:hover {
+    border-color: var(--primary);
+}
+
+/* ---------- Tabs ---------- */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+}
+.stTabs [data-baseweb="tab"] {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+.stTabs [aria-selected="true"] {
+    color: #A5B4FC !important;
+}
+.stTabs [data-baseweb="tab-highlight"] {
+    background-color: var(--primary);
+}
+
+/* ---------- Hero ---------- */
+.hero {
+    padding: 2.1rem 0 1.5rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1.6rem;
+}
+.hero h1 {
+    font-size: 1.9rem !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.3rem;
+    color: var(--text-strong) !important;
+}
+.hero .accent {
+    background: linear-gradient(90deg, #818CF8, #22D3EE);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+.hero p {
+    color: var(--text-muted);
+    font-size: 0.92rem;
+    margin: 0;
+}
+
+/* ---------- Card paper ---------- */
 .paper-card {
-    background: #1E293B;
-    border: 1px solid #334155;
-    border-radius: 12px;
-    padding: 1.25rem 1.5rem;
-    margin-bottom: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.4rem;
+    margin-bottom: 0.9rem;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 .paper-card:hover {
-    border-color: #6366F1;
-    box-shadow: 0 4px 20px rgba(99,102,241,0.15);
+    border-color: rgba(99, 102, 241, 0.55);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
 }
 .paper-title {
     font-size: 1rem;
     font-weight: 600;
-    color: #818CF8;
+    color: #A5B4FC;
     text-decoration: none;
-    line-height: 1.4;
+    line-height: 1.45;
 }
-.paper-title:hover { color: #A5B4FC; }
+a.paper-title:hover {
+    color: #C7D2FE;
+    text-decoration: underline;
+}
 .paper-meta {
     font-size: 0.75rem;
-    color: #64748B;
-    margin: 0.35rem 0 0.75rem;
+    color: var(--text-muted);
+    margin: 0.45rem 0 0.7rem;
     display: flex;
     gap: 0.75rem;
     align-items: center;
     flex-wrap: wrap;
 }
-.paper-badge {
-    background: #1D2D50;
-    color: #818CF8;
-    border: 1px solid #3730A3;
-    border-radius: 999px;
-    padding: 0.15rem 0.6rem;
-    font-size: 0.7rem;
-    font-weight: 500;
-}
 .paper-abstract {
     font-size: 0.875rem;
-    color: #94A3B8;
+    color: var(--text-muted);
     line-height: 1.65;
+    margin: 0;
 }
 
-/* Chat */
+/* ---------- Badge categorie ---------- */
+.badge {
+    border-radius: 999px;
+    padding: 0.16rem 0.65rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    border: 1px solid;
+    white-space: nowrap;
+}
+.badge-ai     { color: #A5B4FC; background: rgba(99, 102, 241, 0.12);  border-color: rgba(99, 102, 241, 0.40); }
+.badge-lg     { color: #6EE7B7; background: rgba(16, 185, 129, 0.10);  border-color: rgba(16, 185, 129, 0.35); }
+.badge-cl     { color: #FCD34D; background: rgba(245, 158, 11, 0.10);  border-color: rgba(245, 158, 11, 0.35); }
+.badge-cv     { color: #7DD3FC; background: rgba(14, 165, 233, 0.10);  border-color: rgba(14, 165, 233, 0.35); }
+.badge-ir     { color: #F9A8D4; background: rgba(236, 72, 153, 0.10);  border-color: rgba(236, 72, 153, 0.35); }
+.badge-upload { color: #C4B5FD; background: rgba(139, 92, 246, 0.10);  border-color: rgba(139, 92, 246, 0.35); }
+.badge-default{ color: var(--text-muted); background: rgba(148, 163, 184, 0.10); border-color: rgba(148, 163, 184, 0.30); }
+
+/* ---------- Chat ---------- */
 [data-testid="stChatMessage"] {
-    background: transparent !important;
-    border-radius: 12px;
-    margin-bottom: 0.5rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 0.5rem 0.9rem;
+    margin-bottom: 0.6rem;
 }
-
-/* Chat input */
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {
+    background: var(--primary-soft);
+    border-color: rgba(99, 102, 241, 0.30);
+}
 [data-testid="stChatInput"] > div {
-    background: #1E293B;
-    border: 1px solid #334155;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
     border-radius: 12px;
 }
 [data-testid="stChatInput"] textarea {
-    color: #E2E8F0;
+    color: var(--text);
     background: transparent;
 }
-
-/* Titles */
-h1 { color: #F1F5F9 !important; font-weight: 700 !important; }
-h2, h3 { color: #CBD5E1 !important; font-weight: 600 !important; }
-
-/* Hero header */
-.hero {
-    padding: 2rem 0 1.5rem;
-    border-bottom: 1px solid #1E293B;
-    margin-bottom: 1.5rem;
+[data-testid="stChatInput"]:focus-within > div {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-ring);
 }
-.hero h1 { font-size: 1.75rem !important; margin-bottom: 0.25rem; }
-.hero p { color: #64748B; font-size: 0.9rem; margin: 0; }
+
+/* ---------- Vari ---------- */
+h1 { color: var(--text-strong) !important; font-weight: 700 !important; }
+h2, h3 { color: var(--text) !important; font-weight: 600 !important; }
+hr { border-color: var(--border); margin: 1rem 0; }
+
+[data-testid="stAlert"] {
+    border-radius: 10px;
+}
+
+.results-count {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+}
+.results-count strong { color: #A5B4FC; }
+
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-faint);
+    font-size: 0.9rem;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius);
+    margin-top: 1rem;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+@media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
 
+def category_badge(category: str) -> str:
+    if not category:
+        return ""
+    label, badge_class = CATEGORY_META.get(category, (category, "badge-default"))
+    return f"<span class='badge {badge_class}'>{esc(label)}</span>"
+
+
+def render_paper_card(p: dict, abstract_chars: int = 320) -> None:
+    link = p.get("link") or ""
+    title_html = (
+        f"<a class='paper-title' href='{esc(link)}' target='_blank' rel='noopener'>{esc(p.get('title'))}</a>"
+        if link.startswith("http")
+        else f"<span class='paper-title'>{esc(p.get('title'))}</span>"
+    )
+    abstract = (p.get("abstract") or "").strip()
+    if len(abstract) > abstract_chars:
+        abstract = abstract[:abstract_chars].rstrip() + "…"
+    st.markdown(
+        f"<div class='paper-card'>"
+        f"{title_html}"
+        f"<div class='paper-meta'>"
+        f"<span>ID {esc(p.get('id'))}</span>"
+        f"<span>{esc(str(p.get('published') or '')[:10])}</span>"
+        f"{category_badge(p.get('category') or '')}"
+        f"</div>"
+        f"<p class='paper-abstract'>{esc(abstract)}</p>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def api_error_detail(response) -> str:
+    try:
+        return response.json().get("detail", f"Errore API ({response.status_code})")
+    except Exception:
+        return f"Errore API ({response.status_code})"
+
+
 # --- Sidebar ---
 with st.sidebar:
-    st.markdown("## AI Paper Assistant")
-    st.markdown("---")
-    page = st.selectbox(
+    st.markdown(
+        "<div class='brand'>"
+        "<div class='brand-logo'>"
+        "<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='white' "
+        "stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>"
+        "<path d='M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z'/>"
+        "<path d='M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z'/>"
+        "</svg>"
+        "</div>"
+        "<div>"
+        "<div class='brand-name'>AI Paper Assistant</div>"
+        "<div class='brand-sub'>RAG su paper arXiv</div>"
+        "</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    page = st.radio(
         "Sezione",
         ["Ricerca Paper", "Carica Paper", "Chat con l'assistente"],
         label_visibility="collapsed",
     )
     st.markdown("---")
-    if st.button("Aggiorna paper da arXiv"):
+    if st.button("Aggiorna paper da arXiv", type="primary"):
         with st.spinner("Scarico nuovi paper..."):
             try:
-                r = requests.post(f"{API_URL}/papers/ingest")
+                r = requests.post(f"{API_URL}/papers/ingest", timeout=TIMEOUT_INGEST)
                 if r.status_code == 200:
-                    data = r.json()
-                    if data["status"] == "ok":
-                        st.session_state["ingest_result"] = data
-                    else:
-                        st.error(f"Errore: {data.get('message')}")
+                    st.session_state["ingest_result"] = r.json()
                 else:
-                    st.error(f"Errore API ({r.status_code})")
+                    st.error(api_error_detail(r))
+            except requests.Timeout:
+                st.error("L'aggiornamento sta impiegando troppo tempo. Riprova.")
             except Exception as e:
-                st.error(f"Errore: {e}")
+                st.error(f"Errore di connessione: {e}")
     st.markdown(
-        "<p style='font-size:0.75rem;color:#475569;margin-top:2rem'>"
+        "<div class='sidebar-footer'>"
         "Fonti: arXiv<br>"
         "Artificial Intelligence · Machine Learning<br>"
         "NLP · Computer Vision · Information Retrieval"
-        "</p>",
+        "</div>",
         unsafe_allow_html=True,
     )
 
@@ -218,8 +460,8 @@ with st.sidebar:
 if page == "Ricerca Paper":
     st.markdown(
         "<div class='hero'>"
-        "<h1>Ricerca Paper Scientifici</h1>"
-        "<p>Cerca tra i paper piu recenti da arXiv su AI, ML, NLP e Computer Vision</p>"
+        "<h1>Ricerca <span class='accent'>Paper Scientifici</span></h1>"
+        "<p>Cerca tra i paper più recenti da arXiv su AI, ML, NLP e Computer Vision</p>"
         "</div>",
         unsafe_allow_html=True,
     )
@@ -230,72 +472,58 @@ if page == "Ricerca Paper":
         n = data["new_papers"]
         papers = data.get("papers", [])
         if n == 0:
-            st.info("Nessun nuovo paper trovato — il database e' gia' aggiornato.")
+            st.info("Nessun nuovo paper trovato — il database è già aggiornato.")
         else:
             st.success(f"Aggiunti {n} nuovi paper!")
-            # Raggruppa per categoria
             from collections import defaultdict
             by_cat = defaultdict(list)
             for p in papers:
                 by_cat[p["category"]].append(p)
-            tab_labels = [CATEGORY_LABELS.get(c, c) for c in by_cat.keys()]
+            tab_labels = [CATEGORY_META.get(c, (c, ""))[0] for c in by_cat.keys()]
             tabs = st.tabs(tab_labels)
             for tab, cat in zip(tabs, by_cat.keys()):
                 with tab:
                     for p in by_cat[cat]:
-                        st.markdown(
-                            f"<div class='paper-card'>"
-                            f"<a class='paper-title' href='{p['link']}' target='_blank'>{p['title']}</a>"
-                            f"<div class='paper-meta'>"
-                            f"<span>ID {p['id']}</span>"
-                            f"<span>{p['published']}</span>"
-                            f"<span class='paper-badge'>{CATEGORY_LABELS.get(p['category'], p['category'])}</span>"
-                            f"</div>"
-                            f"<p class='paper-abstract'>{p['abstract']}...</p>"
-                            f"</div>",
-                            unsafe_allow_html=True,
-                        )
-        if st.button("Chiudi", key="close_ingest"):
+                        render_paper_card(p, abstract_chars=200)
+        if st.button("Chiudi", key="close_ingest", type="secondary"):
             del st.session_state["ingest_result"]
             st.rerun()
         st.markdown("---")
 
     col_input, col_btn = st.columns([5, 1])
     with col_input:
-        q = st.text_input("", placeholder="Cerca per parola chiave...", label_visibility="collapsed")
+        q = st.text_input(
+            "Ricerca",
+            placeholder="Cerca per argomento, es. \"transformer efficiency\"...",
+            label_visibility="collapsed",
+        )
     with col_btn:
-        search = st.button("Cerca")
+        search = st.button("Cerca", type="primary")
 
     if search or q:
         with st.spinner("Ricerca in corso..."):
             try:
-                r = requests.get(f"{API_URL}/papers/search", params={"q": q})
-                papers = r.json()
-
-                if papers:
+                r = requests.get(
+                    f"{API_URL}/papers/search", params={"q": q}, timeout=TIMEOUT_SEARCH
+                )
+                papers = r.json() if r.status_code == 200 else None
+                if papers is None:
+                    st.error(api_error_detail(r))
+                elif papers:
                     st.markdown(
-                        f"<p style='color:#64748B;font-size:0.85rem;margin-bottom:1rem'>"
-                        f"Trovati <strong style='color:#818CF8'>{len(papers)}</strong> risultati</p>",
+                        f"<p class='results-count'>Trovati <strong>{len(papers)}</strong> risultati</p>",
                         unsafe_allow_html=True,
                     )
                     for p in papers:
-                        category = p.get("category") or ""
-                        category_label = CATEGORY_LABELS.get(category, category)
-                        badge = f"<span class='paper-badge'>{category_label}</span>" if category else ""
-                        st.markdown(
-                            f"<div class='paper-card'>"
-                            f"<a class='paper-title' href='{p['link']}' target='_blank'>{p['title']}</a>"
-                            f"<div class='paper-meta'>"
-                            f"<span>ID {p['id']}</span>"
-                            f"<span>{p.get('published','')[:10]}</span>"
-                            f"{badge}"
-                            f"</div>"
-                            f"<p class='paper-abstract'>{p['abstract'][:320]}...</p>"
-                            f"</div>",
-                            unsafe_allow_html=True,
-                        )
+                        render_paper_card(p)
                 else:
-                    st.warning("Nessun risultato trovato.")
+                    st.markdown(
+                        "<div class='empty-state'>Nessun risultato trovato.<br>"
+                        "Prova con altre parole chiave o aggiorna i paper da arXiv.</div>",
+                        unsafe_allow_html=True,
+                    )
+            except requests.Timeout:
+                st.error("La ricerca sta impiegando troppo tempo. Riprova.")
             except Exception as e:
                 st.error(f"Errore di connessione: {e}")
 
@@ -304,8 +532,8 @@ if page == "Ricerca Paper":
 elif page == "Carica Paper":
     st.markdown(
         "<div class='hero'>"
-        "<h1>Carica un Paper PDF</h1>"
-        "<p>Carica un file PDF e chatta con l'assistente sul suo contenuto</p>"
+        "<h1>Carica un <span class='accent'>Paper PDF</span></h1>"
+        "<p>Carica un file PDF e chatta con l'assistente sul suo contenuto (max 25 MB)</p>"
         "</div>",
         unsafe_allow_html=True,
     )
@@ -322,6 +550,7 @@ elif page == "Carica Paper":
                 r = requests.post(
                     f"{API_URL}/papers/upload",
                     files={"file": (uploaded_file.name, uploaded_file.getvalue(), "application/pdf")},
+                    timeout=TIMEOUT_UPLOAD,
                 )
                 if r.status_code == 200:
                     data = r.json()
@@ -329,15 +558,19 @@ elif page == "Carica Paper":
                         f"Paper caricato con successo! "
                         f"**ID: {data['paper_id']}** · {data['pages']} pagine"
                     )
+                    if data.get("truncated"):
+                        st.warning(
+                            "Il documento è molto lungo: è stata indicizzata solo la prima parte."
+                        )
                     st.markdown(
                         f"<div class='paper-card'>"
-                        f"<span class='paper-title'>{data['title']}</span>"
+                        f"<span class='paper-title'>{esc(data['title'])}</span>"
                         f"<div class='paper-meta'>"
-                        f"<span>ID {data['paper_id']}</span>"
-                        f"<span class='paper-badge'>upload</span>"
+                        f"<span>ID {esc(data['paper_id'])}</span>"
+                        f"{category_badge('upload')}"
                         f"</div>"
                         f"<p class='paper-abstract'>"
-                        f"Usa l'ID <strong>{data['paper_id']}</strong> nella sezione "
+                        f"Usa l'ID <strong>{esc(data['paper_id'])}</strong> nella sezione "
                         f"<em>Chat con l'assistente</em> per fare domande su questo paper."
                         f"</p>"
                         f"</div>",
@@ -345,19 +578,18 @@ elif page == "Carica Paper":
                     )
                     st.session_state["last_uploaded_id"] = data["paper_id"]
                 else:
-                    detail = r.json().get("detail", r.text)
-                    st.error(f"Errore: {detail}")
+                    st.error(api_error_detail(r))
+            except requests.Timeout:
+                st.error("Il caricamento sta impiegando troppo tempo. Prova con un PDF più piccolo.")
             except Exception as e:
                 st.error(f"Errore di connessione: {e}")
 
     if "last_uploaded_id" in st.session_state:
         st.markdown("---")
         st.markdown(
-            f"<p style='color:#64748B;font-size:0.85rem'>"
-            f"Ultimo paper caricato: ID <strong style='color:#818CF8'>"
-            f"{st.session_state['last_uploaded_id']}</strong> — "
-            f"vai su <em>Chat con l'assistente</em> per interrogarlo."
-            f"</p>",
+            f"<p class='results-count'>"
+            f"Ultimo paper caricato: ID <strong>{esc(st.session_state['last_uploaded_id'])}</strong> — "
+            f"vai su <em>Chat con l'assistente</em> per interrogarlo.</p>",
             unsafe_allow_html=True,
         )
 
@@ -366,8 +598,8 @@ elif page == "Carica Paper":
 elif page == "Chat con l'assistente":
     st.markdown(
         "<div class='hero'>"
-        "<h1>Chat con l'Assistente AI</h1>"
-        "<p>Fai domande su un paper specifico - l'AI risponde basandosi sul suo contenuto</p>"
+        "<h1>Chat con <span class='accent'>l'Assistente AI</span></h1>"
+        "<p>Fai domande su un paper specifico — l'AI risponde basandosi sul suo contenuto</p>"
         "</div>",
         unsafe_allow_html=True,
     )
@@ -378,19 +610,26 @@ elif page == "Chat con l'assistente":
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        if st.button("Di cosa parla?"):
+        if st.button("Di cosa parla?", type="secondary"):
             st.session_state["quick_question"] = "Di cosa parla questo paper?"
     with col2:
-        if st.button("Riassumi"):
+        if st.button("Riassumi", type="secondary"):
             st.session_state["quick_question"] = "Riassumi questo paper in modo chiaro e conciso."
     with col3:
-        if st.button("Metodologia"):
-            st.session_state["quick_question"] = "Qual e' la metodologia usata in questo paper?"
+        if st.button("Metodologia", type="secondary"):
+            st.session_state["quick_question"] = "Qual è la metodologia usata in questo paper?"
 
     st.markdown("---")
 
     if "messages" not in st.session_state:
         st.session_state["messages"] = []
+
+    if not st.session_state["messages"]:
+        st.markdown(
+            "<div class='empty-state'>Nessun messaggio ancora.<br>"
+            "Inserisci l'ID di un paper e scrivi una domanda, oppure usa i pulsanti rapidi.</div>",
+            unsafe_allow_html=True,
+        )
 
     for msg in st.session_state["messages"]:
         with st.chat_message(msg["role"]):
@@ -409,8 +648,14 @@ elif page == "Chat con l'assistente":
                     r = requests.post(
                         f"{API_URL}/rag/answer",
                         json={"question": question, "paper_id": int(paper_id)},
+                        timeout=TIMEOUT_RAG,
                     )
-                    answer = r.json().get("answer", "Nessuna risposta.") if r.status_code == 200 else f"Errore API ({r.status_code})"
+                    if r.status_code == 200:
+                        answer = r.json().get("answer", "Nessuna risposta.")
+                    else:
+                        answer = api_error_detail(r)
+                except requests.Timeout:
+                    answer = "La risposta sta impiegando troppo tempo. Riprova."
                 except Exception as e:
                     answer = f"Errore di connessione: {e}"
 

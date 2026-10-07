@@ -10,7 +10,7 @@ import requests as http_requests
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
-from huggingface_hub import InferenceClient
+from groq import Groq
 from dotenv import load_dotenv
 from pypdf import PdfReader
 
@@ -61,9 +61,9 @@ if os.path.exists(FAISS_PATH):
 else:
     faiss_index = _new_index()
 
-# Client Hugging Face (legge HUGGINGFACE_API_TOKEN o HF_TOKEN)
-HF_TOKEN = os.getenv("HUGGINGFACE_API_TOKEN") or os.getenv("HF_TOKEN")
-client = InferenceClient(model="Qwen/Qwen2.5-7B-Instruct", token=HF_TOKEN)
+# Client Groq (free tier) — legge GROQ_API_KEY
+LLM_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
+client = Groq(max_retries=6) if os.getenv("GROQ_API_KEY") else None
 
 # ============================================================
 # MODELLI DATI
@@ -382,16 +382,23 @@ def ask_llm(question: str, context: str) -> str:
         },
     ]
     try:
+        if client is None:
+            raise RuntimeError("GROQ_API_KEY non impostata")
         completion = client.chat.completions.create(
-            model="Qwen/Qwen2.5-7B-Instruct",
+            model=LLM_MODEL,
             messages=messages,
-            max_tokens=400,
+            # gpt-oss ragiona prima di rispondere: i token di reasoning contano nel limite
+            max_tokens=400 + 1024,
             temperature=0.4,
+            extra_body={"reasoning_effort": "low"},
         )
-        return completion.choices[0].message.content.strip()
+        answer = completion.choices[0].message.content
+        if not answer:
+            raise RuntimeError("Risposta vuota dal modello")
+        return answer.strip()
     except Exception as e:
         # Log interno completo, ma niente dettagli implementativi al client
-        print(f"ERRORE HF: {type(e).__name__}: {e}")
+        print(f"ERRORE LLM: {type(e).__name__}: {e}")
         raise HTTPException(
             status_code=502,
             detail="Il servizio di generazione non e' al momento disponibile. Riprova tra qualche istante.",

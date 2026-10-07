@@ -9,6 +9,7 @@ streamlit
 # AI & NLP
 sentence-transformers
 huggingface_hub
+groq
 
 # Database & Utility
 python-dotenv

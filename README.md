@@ -76,7 +76,7 @@ arXiv / PDF  ─►  chunk (900 chars, 150 overlap)  ─►  MiniLM-L6-v2 embed
                 User question ─► embed ─► top-k cosine ─► chunks
                                                            │
                                                            ▼
-                                         Qwen2.5-7B (HF Inference) ─► Answer
+                                         GPT-OSS 20B (Groq)        ─► Answer
 ```
 
 ---
@@ -87,7 +87,7 @@ arXiv / PDF  ─►  chunk (900 chars, 150 overlap)  ─►  MiniLM-L6-v2 embed
 |-------|-----------|---------|
 | **Frontend** | Streamlit | Interactive web UI |
 | **Backend** | FastAPI | REST API & RAG orchestration |
-| **LLM** | Qwen2.5-7B-Instruct (Hugging Face) | Grounded Q&A |
+| **LLM** | GPT-OSS 20B (Groq, free tier) | Grounded Q&A |
 | **Embeddings** | Sentence-Transformers (MiniLM-L6-v2, 384-d) | Encode chunks & queries |
 | **Vector store** | FAISS (`IndexIDMap` over `IndexFlatIP`) | Top-k cosine retrieval |
 | **Database** | SQLite | Paper metadata + chunk text + embedding BLOBs |
@@ -119,7 +119,7 @@ python app.py
 Create a `.env` file in the root directory:
 
 ```env
-HUGGINGFACE_API_TOKEN=your_huggingface_token_here
+GROQ_API_KEY=your_groq_api_key_here
 ```
 
 ### Run locally
@@ -157,7 +157,7 @@ python -m evals.retrieval_eval --limit 50 --k 5
 ## Deploy on Hugging Face Spaces
 
 1. Create a new Space (SDK: **Docker**, visibility: **Public**)
-2. Add secret `HUGGINGFACE_API_TOKEN` in Space Settings
+2. Add secret `GROQ_API_KEY` in Space Settings (free key at https://console.groq.com/keys)
 3. Push the repo — papers are ingested automatically on first boot
 
 ---
@@ -168,7 +168,7 @@ python -m evals.retrieval_eval --limit 50 --k 5
 2. **Chunk + embed** — Splits text into overlapping chunks (900 chars, 150 overlap) and encodes them with MiniLM-L6-v2
 3. **Index** — Stores chunk text + embedding BLOB in SQLite and adds the vector to a persisted FAISS index (`data/faiss.index`)
 4. **Retrieve** — Embeds the user question, runs cosine top-k via FAISS (global) or in-paper (scoped when `paper_id` is set)
-5. **Generate** — The retrieved chunks are sent to Qwen2.5-7B-Instruct as grounded context for the final answer
+5. **Generate** — The retrieved chunks are sent to GPT-OSS 20B (via Groq) as grounded context for the final answer
 6. **Backfill** — On API startup, any paper missing chunks is embedded automatically; `POST /admin/reindex` rebuilds FAISS from the SQLite source of truth
 
 ---

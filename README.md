@@ -17,7 +17,7 @@ pinned: false
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.x-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)](https://streamlit.io)
-[![Hugging Face](https://img.shields.io/badge/Hugging%20Face-Spaces-FFD21E?style=flat-square&logo=huggingface&logoColor=black)](https://huggingface.co/spaces)
+[![Hugging Face](https://img.shields.io/badge/Hugging%20Face-Spaces-FFD21E?style=flat-square&logo=huggingface&logoColor=black)](https://huggingface.co/spaces/Riccardi4le/ai-paper-assistant)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
 </div>
@@ -152,6 +152,16 @@ pytest tests/ -v
 python -m evals.retrieval_eval --limit 50 --k 5
 ```
 
+Results (2026-10-08 · 42 recent arXiv papers across cs.AI/LG/CL/CV/IR · 93 chunks in the index):
+
+| Query style | recall@1 | recall@5 | MRR |
+|---|---|---|---|
+| Title (sanity check) | 1.000 | 1.000 | 1.000 |
+| First 100 chars of the abstract | 0.929 | 1.000 | 0.964 |
+| Last sentence of the abstract (hard) | 0.881 | 0.976 | 0.919 |
+
+Small corpus and queries derived from the papers' own text, so these numbers are optimistic: they show retrieval works, not how it scales. They measure retrieval, not answer quality.
+
 ---
 
 ## Deploy on Hugging Face Spaces
@@ -187,7 +197,7 @@ python -m evals.retrieval_eval --limit 50 --k 5
 
 ## Author
 
-**Alessandro Riccardi** — Data Scientist & ML Engineer
+**Alessandro Riccardi** — Data Scientist & AI Engineer
 
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0A66C2?style=flat-square&logo=linkedin)](https://www.linkedin.com/in/alessandro-riccardi-83b3b3257/)
 [![GitHub](https://img.shields.io/badge/GitHub-Riccardi4le-181717?style=flat-square&logo=github)](https://github.com/Riccardi4le)
